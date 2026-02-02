@@ -1,5 +1,5 @@
 [app]
-video_source = "pexels" # "pexels" or "pixabay"
+video_source = "pexels" # "pexels", "pixabay", "local_search", "baidu_image", "bing_image"
 
 # 是否隐藏配置面板
 hide_config = false

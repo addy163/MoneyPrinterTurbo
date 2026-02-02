@@ -10,9 +10,6 @@ from loguru import logger
 root_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
-    print("******** sys.path ********")
-    print(sys.path)
-    print("")
 
 from app.config import config
 from app.models.schema import (
@@ -33,22 +30,98 @@ st.set_page_config(
     initial_sidebar_state="auto",
     menu_items={
         "Report a bug": "https://github.com/harry0703/MoneyPrinterTurbo/issues",
-        "About": "# MoneyPrinterTurbo\nSimply provide a topic or keyword for a video, and it will "
-        "automatically generate the video copy, video materials, video subtitles, "
-        "and video background music before synthesizing a high-definition short "
-        "video.\n\nhttps://github.com/harry0703/MoneyPrinterTurbo",
+        "About": "# MoneyPrinterTurbo\nSimply provide a topic or keyword for a video, and it will automatically generate the video copy, video materials, video subtitles, and video background music before synthesizing a high-definition short video.\n\nhttps://github.com/harry0703/MoneyPrinterTurbo",
     },
 )
 
-
 streamlit_style = """
 <style>
+/* Main Background and Text */
+.stApp {
+    background-color: #f8f9fa;
+    color: #212529;
+}
+
+/* Titles and Headers */
+h1, h2, h3 {
+    color: #2c3e50 !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 600;
+}
+
 h1 {
-    padding-top: 0 !important;
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+    border-bottom: 2px solid #e9ecef;
+    margin-bottom: 2rem;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #ffffff;
+    border-right: 1px solid #dee2e6;
+}
+
+/* Buttons */
+.stButton > button {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.stButton > button[kind="primary"] {
+    background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
+    border: none;
+    padding: 0.5rem 2rem;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.stButton > button[kind="primary"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0,0,0,0.15);
+}
+
+/* Inputs and Selectboxes */
+.stTextInput > div > div > input, 
+.stSelectbox > div > div > div {
+    border-radius: 6px;
+    border-color: #ced4da;
+}
+
+.stTextInput > div > div > input:focus, 
+.stSelectbox > div > div > div:focus {
+    border-color: #4b6cb7;
+    box-shadow: 0 0 0 2px rgba(75, 108, 183, 0.2);
+}
+
+/* Containers/Expanders */
+div[data-testid="stExpander"] {
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: 1px solid #e9ecef;
+}
+
+div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
+    gap: 1.5rem;
+}
+
+/* Cards (using st.container with border) */
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+    background-color: #ffffff;
+    border-radius: 10px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+    border: 1px solid #f1f3f5;
+}
+
+/* Logs */
+.stCode {
+    border-radius: 6px;
 }
 </style>
-"""
-st.markdown(streamlit_style, unsafe_allow_html=True)
+"
 
 # 定义资源目录
 font_dir = os.path.join(root_dir, "resource", "fonts")
@@ -176,7 +249,7 @@ def init_log():
         _format = (
             "<green>{time:%Y-%m-%d %H:%M:%S}</> | "
             + "<level>{level}</> | "
-            + '"{file.path}:{line}":<blue> {function}</> '
+            + '"{file.path}:{line}:<blue> {function}</> "'
             + "- <level>{message}</>"
             + "\n"
         )
@@ -259,7 +332,7 @@ if not config.app.get("hide_config", False):
 
             llm_api_key = config.app.get(f"{llm_provider}_api_key", "")
             llm_secret_key = config.app.get(
-                f"{llm_provider}_secret_key", ""
+                f"{llm_provider}_secret_key", "" 
             )  # only for baidu ernie
             llm_base_url = config.app.get(f"{llm_provider}_base_url", "")
             llm_model_name = config.app.get(f"{llm_provider}_model_name", "")
@@ -558,10 +631,10 @@ with middle_panel:
         video_sources = [
             (tr("Pexels"), "pexels"),
             (tr("Pixabay"), "pixabay"),
-            (tr("Local file"), "local"),
-            (tr("TikTok"), "douyin"),
-            (tr("Bilibili"), "bilibili"),
-            (tr("Xiaohongshu"), "xiaohongshu"),
+            (tr("Local Search (Keyword)"), "local_search"),
+            (tr("Baidu Images"), "baidu_image"),
+            (tr("Bing Images"), "bing_image"),
+            (tr("Local file (Upload)"), "local"),
         ]
 
         saved_video_source_name = config.app.get("video_source", "pexels")
@@ -676,10 +749,10 @@ with middle_panel:
         if selected_tts_server == "siliconflow":
             # 获取硅基流动的声音列表
             filtered_voices = voice.get_siliconflow_voices()
-        elif selected_tts_server == "gemini-tts":
+elif selected_tts_server == "gemini-tts":
             # 获取Gemini TTS的声音列表
             filtered_voices = voice.get_gemini_voices()
-        else:
+else:
             # 获取Azure的声音列表
             all_voices = voice.get_all_azure_voices(filter_locals=None)
 
@@ -998,7 +1071,7 @@ if start_button:
         scroll_to_bottom()
         st.stop()
 
-    if params.video_source not in ["pexels", "pixabay", "local"]:
+    if params.video_source not in ["pexels", "pixabay", "local", "local_search", "baidu_image", "bing_image"]:
         st.error(tr("Please Select a Valid Video Source"))
         scroll_to_bottom()
         st.stop()
