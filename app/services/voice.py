@@ -8,8 +8,19 @@ from xml.sax.saxutils import unescape
 import edge_tts
 import requests
 from edge_tts import SubMaker, submaker
-from edge_tts.submaker import mktimestamp
 from loguru import logger
+
+def mktimestamp(ticks: int) -> str:
+    """
+    Ticks are in 100ns units.
+    Returns format HH:MM:SS.mmm
+    """
+    total_milliseconds = ticks // 10000
+    hours, milliseconds = divmod(total_milliseconds, 3600000)
+    minutes, milliseconds = divmod(milliseconds, 60000)
+    seconds, milliseconds = divmod(milliseconds, 1000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
 from moviepy.video.tools import subtitles
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 
@@ -1185,9 +1196,7 @@ def azure_tts_v1(
                         if chunk["type"] == "audio":
                             file.write(chunk["data"])
                         elif chunk["type"] == "WordBoundary":
-                            sub_maker.create_sub(
-                                (chunk["offset"], chunk["duration"]), chunk["text"]
-                            )
+                            sub_maker.feed(chunk)
                 return sub_maker
 
             sub_maker = asyncio.run(_do())
@@ -1621,7 +1630,15 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
     sub_line = ""
 
     try:
-        for _, (offset, sub) in enumerate(zip(sub_maker.offset, sub_maker.subs)):
+        # Compatibility for edge-tts v7
+        if hasattr(sub_maker, 'cues'):
+            offsets = [(cue.start, cue.end) for cue in sub_maker.cues]
+            subs = [cue.content for cue in sub_maker.cues]
+        else:
+            offsets = sub_maker.offset
+            subs = sub_maker.subs
+
+        for _, (offset, sub) in enumerate(zip(offsets, subs)):
             _start_time, end_time = offset
             if start_time < 0:
                 start_time = _start_time
@@ -1666,7 +1683,9 @@ def _get_audio_duration_from_submaker(sub_maker: submaker.SubMaker):
     """
     获取音频时长
     """
-    if not sub_maker.offset:
+    if hasattr(sub_maker, 'cues') and sub_maker.cues:
+        return sub_maker.cues[-1].end / 10000000
+    if not hasattr(sub_maker, 'offset') or not sub_maker.offset:
         return 0.0
     return sub_maker.offset[-1][1] / 10000000
 
