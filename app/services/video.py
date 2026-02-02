@@ -484,48 +484,69 @@ def generate_video(
     del video_clip
 
 
-def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
+def preprocess_video(materials: List[MaterialInfo], clip_duration=4, video_aspect: VideoAspect = VideoAspect.portrait):
+    target_width, target_height = VideoAspect(video_aspect).to_resolution()
+    
     for material in materials:
         if not material.url:
             continue
 
         ext = utils.parse_extension(material.url)
         try:
-            clip = VideoFileClip(material.url)
-        except Exception:
-            clip = ImageClip(material.url)
+            if ext in const.FILE_TYPE_VIDEOS:
+                clip = VideoFileClip(material.url)
+            else:
+                clip = ImageClip(material.url)
+        except Exception as e:
+            logger.warning(f"failed to load material {material.url}: {e}")
+            continue
 
-        width = clip.size[0]
-        height = clip.size[1]
-        if width < 480 or height < 480:
-            logger.warning(f"low resolution material: {width}x{height}, minimum 480x480 required")
+        width, height = clip.size
+        
+        # Simple resolution check for videos, but for images we'll scale them
+        if ext in const.FILE_TYPE_VIDEOS and (width < 480 or height < 480):
+            logger.warning(f"low resolution video: {width}x{height}, minimum 480x480 required")
+            clip.close()
             continue
 
         if ext in const.FILE_TYPE_IMAGES:
             logger.info(f"processing image: {material.url}")
-            # Create an image clip and set its duration to 3 seconds
-            clip = (
-                ImageClip(material.url)
-                .with_duration(clip_duration)
-                .with_position("center")
-            )
-            # Apply a zoom effect using the resize method.
-            # A lambda function is used to make the zoom effect dynamic over time.
-            # The zoom effect starts from the original size and gradually scales up to 120%.
-            # t represents the current time, and clip.duration is the total duration of the clip (3 seconds).
-            # Note: 1 represents 100% size, so 1.2 represents 120% size.
-            zoom_clip = clip.resized(
-                lambda t: 1 + (clip_duration * 0.03) * (t / clip.duration)
-            )
-
-            # Optionally, create a composite video clip containing the zoomed clip.
-            # This is useful when you want to add other elements to the video.
-            final_clip = CompositeVideoClip([zoom_clip])
+            
+            # 1. Scale image to fit the target resolution while maintaining aspect ratio
+            img_ratio = width / height
+            target_ratio = target_width / target_height
+            
+            if img_ratio > target_ratio:
+                # Image is wider than target
+                new_w = target_width
+                new_h = int(target_width / img_ratio)
+            else:
+                # Image is taller than target
+                new_h = target_height
+                new_w = int(target_height * img_ratio)
+            
+            # Ensure new dimensions are even for some encoders
+            new_w = (new_w // 2) * 2
+            new_h = (new_h // 2) * 2
+            
+            clip = clip.resized(new_size=(new_w, new_h)).with_duration(clip_duration).with_position("center")
+            
+            # 2. Apply a subtle zoom effect
+            # We zoom from 1.0 to 1.1 over the duration
+            zoom_clip = clip.resized(lambda t: 1 + 0.1 * (t / clip_duration))
+            
+            # 3. Create a background with the target resolution
+            background = ColorClip(size=(target_width, target_height), color=(0, 0, 0)).with_duration(clip_duration)
+            
+            final_clip = CompositeVideoClip([background, zoom_clip.with_position("center")])
 
             # Output the video to a file.
             video_file = f"{material.url}.mp4"
-            final_clip.write_videofile(video_file, fps=30, logger=None)
+            final_clip.write_videofile(video_file, fps=30, logger=None, codec=video_codec)
+            
             close_clip(clip)
+            close_clip(final_clip)
             material.url = video_file
-            logger.success(f"image processed: {video_file}")
+            logger.success(f"image processed into video: {video_file}")
+            
     return materials

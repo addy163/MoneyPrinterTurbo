@@ -407,17 +407,17 @@ def generate_terms(video_subject: str, video_script: str, amount: int = 5) -> Li
 # Role: Video Search Terms Generator
 
 ## Goals:
-Generate {amount} search terms for stock videos, depending on the subject of a video.
+Generate {amount} search terms for stock videos or images, depending on the subject of a video.
 
 ## Constrains:
 1. the search terms are to be returned as a json-array of strings.
-2. each search term should consist of 1-3 words, always add the main subject of the video.
-3. you must only return the json-array of strings. you must not return anything else. you must not return the script.
-4. the search terms must be related to the subject of the video.
-5. reply with english search terms only.
+2. each search term should consist of 1-3 words.
+3. you must only return the json-array of strings. you must not return anything else.
+4. the search terms must be highly related to the content of the video.
+5. If the video subject or script is in Chinese, provide search terms in the language that best fits the subject (e.g., both English and Chinese keywords are acceptable to maximize search results).
 
 ## Output Example:
-["search term 1", "search term 2", "search term 3","search term 4","search term 5"]
+["keyword 1", "keyword 2", "keyword 3", "keyword 4", "keyword 5"]
 
 ## Context:
 ### Video Subject
@@ -425,8 +425,6 @@ Generate {amount} search terms for stock videos, depending on the subject of a v
 
 ### Video Script
 {video_script}
-
-Please note that you must use English for generating video search terms; Chinese is not accepted.
 """.strip()
 
     logger.info(f"subject: {video_subject}")

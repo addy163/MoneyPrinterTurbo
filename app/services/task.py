@@ -163,7 +163,9 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
-            materials=params.video_materials, clip_duration=params.video_clip_duration
+            materials=params.video_materials, 
+            clip_duration=params.video_clip_duration,
+            video_aspect=params.video_aspect
         )
         if not materials:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -189,6 +191,25 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
                 "failed to download videos, maybe the network is not available. if you are in China, please use a VPN."
             )
             return None
+
+        # If the source is image-based, we MUST preprocess them into video clips
+        if params.video_source in ["baidu_image", "bing_image"]:
+            logger.info(f"\n\n## preprocessing images from {params.video_source}")
+            materials = []
+            for v in downloaded_videos:
+                m = MaterialInfo()
+                m.url = v
+                m.provider = params.video_source
+                m.duration = params.video_clip_duration
+                materials.append(m)
+            
+            processed_materials = video.preprocess_video(
+                materials=materials, 
+                clip_duration=params.video_clip_duration,
+                video_aspect=params.video_aspect
+            )
+            return [m.url for m in processed_materials]
+
         return downloaded_videos
 
 

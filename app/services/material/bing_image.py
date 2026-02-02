@@ -33,7 +33,14 @@ class BingImageProvider(BaseProvider):
         }
 
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            from app.config import config
+            response = requests.get(
+                url, 
+                headers=headers, 
+                proxies=config.proxy,
+                verify=False,
+                timeout=10
+            )
             response.raise_for_status()
             
             # Bing returns HTML snippets in this async endpoint.
