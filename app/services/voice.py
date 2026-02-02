@@ -1200,8 +1200,8 @@ def azure_tts_v1(
                 return sub_maker
 
             sub_maker = asyncio.run(_do())
-            if not sub_maker or not sub_maker.subs:
-                logger.warning("failed, sub_maker is None or sub_maker.subs is None")
+            if not sub_maker or not sub_maker.cues:
+                logger.warning("failed, sub_maker is None or sub_maker.cues is None")
                 continue
 
             logger.info(f"completed, output file: {voice_file}")
