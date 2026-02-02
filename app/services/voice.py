@@ -1639,7 +1639,8 @@ def create_subtitle(sub_maker: submaker.SubMaker, text: str, subtitle_file: str)
     try:
         # Compatibility for edge-tts v7
         if hasattr(sub_maker, 'cues'):
-            offsets = [(cue.start, cue.end) for cue in sub_maker.cues]
+            # Convert timedelta to 100ns units (ticks) as expected by the rest of the logic
+            offsets = [(int(cue.start.total_seconds() * 10000000), int(cue.end.total_seconds() * 10000000)) for cue in sub_maker.cues]
             subs = [cue.content for cue in sub_maker.cues]
         else:
             offsets = sub_maker.offset
@@ -1691,7 +1692,7 @@ def _get_audio_duration_from_submaker(sub_maker: submaker.SubMaker):
     获取音频时长
     """
     if hasattr(sub_maker, 'cues') and sub_maker.cues:
-        return sub_maker.cues[-1].end / 10000000
+        return sub_maker.cues[-1].end.total_seconds()
     if not hasattr(sub_maker, 'offset') or not sub_maker.offset:
         return 0.0
     return sub_maker.offset[-1][1] / 10000000
