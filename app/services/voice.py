@@ -1310,34 +1310,35 @@ def siliconflow_tts(
                             sentence_duration = int(sentence_chars * char_duration)
 
                             # 添加到SubMaker
-                            sub_maker.subs.append(sentence)
-                            sub_maker.offset.append(
-                                (current_offset, current_offset + sentence_duration)
-                            )
+                            sub_maker.feed({
+                                "type": "WordBoundary",
+                                "offset": current_offset,
+                                "duration": sentence_duration,
+                                "text": sentence
+                            })
 
                             # 更新偏移量
                             current_offset += sentence_duration
                     else:
                         # 如果无法分割，则使用整个文本作为一个字幕
-                        sub_maker.subs = [text]
-                        sub_maker.offset = [(0, audio_duration_100ns)]
+                        sub_maker.feed({
+                            "type": "WordBoundary",
+                            "offset": 0,
+                            "duration": audio_duration_100ns,
+                            "text": text
+                        })
 
                 except Exception as e:
                     logger.warning(f"Failed to create accurate subtitles: {str(e)}")
                     # 回退到简单的字幕
-                    sub_maker.subs = [text]
-                    # 使用音频文件的实际长度，如果无法获取，则假设为10秒
-                    sub_maker.offset = [
-                        (
-                            0,
-                            audio_duration_100ns
-                            if "audio_duration_100ns" in locals()
-                            else 10000000,
-                        )
-                    ]
+                    sub_maker.feed({
+                        "type": "WordBoundary",
+                        "offset": 0,
+                        "duration": audio_duration_100ns if "audio_duration_100ns" in locals() else 10000000,
+                        "text": text
+                    })
 
                 logger.success(f"siliconflow tts succeeded: {voice_file}")
-                print("s", sub_maker.subs, sub_maker.offset)
                 return sub_maker
             else:
                 logger.error(
@@ -1391,8 +1392,12 @@ def azure_tts_v2(text: str, voice_name: str, voice_file: str) -> Union[SubMaker,
 
                 duration = _format_duration_to_offset(str(evt.duration))
                 offset = _format_duration_to_offset(evt.audio_offset)
-                sub_maker.subs.append(evt.text)
-                sub_maker.offset.append((offset, offset + duration))
+                sub_maker.feed({
+                    "type": "WordBoundary",
+                    "offset": offset,
+                    "duration": duration,
+                    "text": evt.text
+                })
 
             # Creates an instance of a speech config with specified subscription key and service region.
             speech_key = config.azure.get("speech_key", "")
@@ -1553,11 +1558,13 @@ def gemini_tts(
         # 将音频长度转换为100纳秒单位（与edge_tts兼容）
         audio_duration_100ns = int(audio_duration * 10000000)
         
-        # 使用create_sub方法正确创建字幕项
-        sub_maker.create_sub(
-            (0, audio_duration_100ns), 
-            text
-        )
+        # 使用feed方法正确创建字幕项
+        sub_maker.feed({
+            "type": "WordBoundary",
+            "offset": 0,
+            "duration": audio_duration_100ns,
+            "text": text
+        })
         
         return sub_maker
         
