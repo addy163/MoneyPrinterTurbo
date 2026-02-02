@@ -43,22 +43,32 @@ def save_video(video_url: str, save_dir: str = "") -> str:
         os.makedirs(save_dir)
 
     # Clean URL to get the base path for extension parsing
-    url_without_query = video_url.split("?")[0]
+    url_without_query = video_url.split("?")[0].lower()
     ext = utils.parse_extension(url_without_query)
-    if ext:
-        ext = f".{ext}"
     
-    url_hash = utils.md5(url_without_query)
+    # Check if it's a known image extension or contains image markers
+    valid_image_exts = ['jpg', 'jpeg', 'png', 'bmp', 'webp']
     
-    # Check if it's a known image extension
-    valid_image_exts = ['.jpg', '.jpeg', '.png', '.bmp', '.webp']
-    if ext.lower() in valid_image_exts:
-        filename = f"img-{url_hash}{ext}"
+    is_image = False
+    if ext in valid_image_exts:
+        is_image = True
+    elif any(img_marker in url_without_query for img_marker in ['fmt=jpeg', 'fmt=png', 'fmt=auto', 'f=jpeg', 'f=png']):
+        # Common image markers in Baidu/Bing URLs
+        is_image = True
+        if not ext:
+            ext = 'jpg' # Default to jpg if marker found but no ext
+            
+    url_hash = utils.md5(video_url.split("?")[0])
+    
+    if is_image:
+        if not ext:
+            ext = "jpg"
+        filename = f"img-{url_hash}.{ext}"
     else:
         # Default to mp4 if unknown or video
         if not ext:
-            ext = ".mp4"
-        filename = f"vid-{url_hash}{ext}"
+            ext = "mp4"
+        filename = f"vid-{url_hash}.{ext}"
 
     video_path = f"{save_dir}/{filename}"
 

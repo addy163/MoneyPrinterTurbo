@@ -26,6 +26,8 @@ node_modules
 
 venv/
 .venv
+moneyprinterturbo_env/
+.moneyprinterturbo_env
 
 # Debug and test files
 CLAUDE.md
