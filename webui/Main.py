@@ -895,6 +895,20 @@ with middle_panel:
 
             config.siliconflow["api_key"] = siliconflow_api_key
 
+        # 当选择 Gemini TTS 时，显示 API key 输入框
+        if selected_tts_server == "gemini-tts" or (
+            voice_name and voice.is_gemini_voice(voice_name)
+        ):
+            saved_gemini_api_key = config.app.get("gemini_api_key", "")
+            gemini_api_key = st.text_input(
+                tr("Gemini API Key"),
+                value=saved_gemini_api_key,
+                type="password",
+                key="gemini_tts_api_key_input",
+            )
+            if gemini_api_key:
+                config.app["gemini_api_key"] = gemini_api_key
+
         params.voice_volume = st.selectbox(
             tr("Speech Volume"),
             options=[0.6, 0.8, 1.0, 1.2, 1.5, 2.0, 3.0, 4.0, 5.0],
