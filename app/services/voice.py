@@ -1473,22 +1473,23 @@ def gemini_tts(
         logger.info(f"start, voice name: {voice_name}, try: 1")
         
         # 使用Gemini TTS API
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-tts")
+        # 注意：需要 google-generativeai >= 0.8.4
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
-        generation_config = {
-            "response_modalities": ["AUDIO"],
-            "speech_config": {
-                "voice_config": {
-                    "prebuilt_voice_config": {
-                        "voice_name": voice_name
-                    }
-                }
-            }
-        }
+        config_obj = genai.types.GenerationConfig(
+            response_modalities=["AUDIO"],
+            speech_config=genai.types.SpeechConfig(
+                voice_config=genai.types.VoiceConfig(
+                    prebuilt_voice_config=genai.types.PrebuiltVoiceConfig(
+                        voice_name=voice_name
+                    )
+                )
+            )
+        )
         
         response = model.generate_content(
             contents=text,
-            generation_config=generation_config
+            generation_config=config_obj
         )
         
         # 检查响应
