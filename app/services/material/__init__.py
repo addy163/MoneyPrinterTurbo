@@ -1,204 +1,76 @@
-import os
-import random
-from typing import List
-import requests
-from loguru import logger
-from moviepy.video.io.VideoFileClip import VideoFileClip
+"""素材源入口：上游主逻辑 + 本项目自定义的百度/Bing/本地素材源。
 
-from app.config import config
-from app.models.schema import MaterialInfo, VideoAspect, VideoConcatMode
-from app.utils import utils
+上游重写后的下载主逻辑在 ``.backup.download_videos``（库存源、付费生成源、
+clip_speed、进度回调、image_motion 等）。本项目额外维护的三个源在
+``.image_sources``。这里只按 ``source`` 做分发，不再导入旧版 provider
+模块——那些模块使用 moviepy v1 的导入路径，在新版依赖下会在启动阶段
+直接 ImportError。
 
-from .pexels import PexelsProvider
-from .pixabay import PixabayProvider
-from .local import LocalProvider
-from .baidu_image import BaiduImageProvider
-from .bing_image import BingImageProvider
+保留 ``save_video`` 名字只是为了兼容可能存在的旧调用方。
+"""
+from __future__ import annotations
 
-def get_provider(provider_name: str):
-    if provider_name == "pexels":
-        return PexelsProvider()
-    elif provider_name == "pixabay":
-        return PixabayProvider()
-    elif provider_name == "local_search":
-        return LocalProvider()
-    elif provider_name == "baidu_image":
-        return BaiduImageProvider()
-    elif provider_name == "bing_image":
-        return BingImageProvider()
-    else:
-        # Default fallback
-        logger.warning(f"Unknown provider '{provider_name}', defaulting to Pexels")
-        return PexelsProvider()
+from . import image_sources
+
+IMAGE_SOURCES = image_sources.IMAGE_SOURCES
+# 返回图片、需要 task 层用 video.preprocess_video 渲染成片段的源
+PREPROCESS_SOURCES = image_sources.PREPROCESS_SOURCES
+
+__all__ = [
+    "download_videos",
+    "save_video",
+    "IMAGE_SOURCES",
+    "PREPROCESS_SOURCES",
+]
+
+
+def __getattr__(name: str):
+    """透传上游 ``backup`` 模块的公共名字，保持 material 包的原有属性集合。
+
+    ``task.py`` 的异常处理会访问 ``material.WaveSpeedUnconfirmedTaskError``、
+    ``material.OpenAIImagePaidResultError``、``material.CodexImageMaterialError``
+    等付费源异常类，这些类定义在 ``.backup`` 中。门面只覆盖下载入口，其余
+    名字按需转发，避免精简导入时破坏异常匹配。
+    """
+    if name.startswith("_"):
+        raise AttributeError(name)
+    from . import backup
+
+    try:
+        return getattr(backup, name)
+    except AttributeError:
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}"
+        ) from None
+
+
+def download_videos(*args, **kwargs):
+    """按素材源分发，参数原样转发，签名与 task.py 的调用保持一致。
+
+    * 百度图片 / Bing 图片 / 本地素材库 -> ``image_sources``
+    * 其余所有源                        -> ``.backup``（上游主逻辑）
+    """
+    source = kwargs.get("source")
+    if source is None and len(args) >= 3:
+        source = args[2]
+
+    if source in image_sources.IMAGE_SOURCES:
+        return image_sources.download_videos(*args, **kwargs)
+
+    from .backup import download_videos as upstream_download_videos
+
+    return upstream_download_videos(*args, **kwargs)
+
 
 def save_video(video_url: str, save_dir: str = "") -> str:
-    # If it's a local file (from LocalProvider), just return it.
-    if os.path.isfile(video_url):
-        return video_url
+    """兼容旧调用：优先交给上游保存逻辑，否则回退到图片源下载器。"""
+    from app.utils import utils
 
+    from . import backup
+
+    upstream = getattr(backup, "save_video", None)
+    if upstream is not None:
+        return upstream(video_url, save_dir)
     if not save_dir:
         save_dir = utils.storage_dir("cache_videos")
-
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    # Clean URL to get the base path for extension parsing
-    url_without_query = video_url.split("?")[0].lower()
-    ext = utils.parse_extension(url_without_query)
-    
-    # Check if it's a known image extension or contains image markers
-    valid_image_exts = ['jpg', 'jpeg', 'png', 'bmp', 'webp']
-    
-    is_image = False
-    if ext in valid_image_exts:
-        is_image = True
-    elif any(img_marker in url_without_query for img_marker in ['fmt=jpeg', 'fmt=png', 'fmt=auto', 'f=jpeg', 'f=png']):
-        # Common image markers in Baidu/Bing URLs
-        is_image = True
-        if not ext:
-            ext = 'jpg' # Default to jpg if marker found but no ext
-            
-    url_hash = utils.md5(video_url.split("?")[0])
-    
-    if is_image:
-        if not ext:
-            ext = "jpg"
-        filename = f"img-{url_hash}.{ext}"
-    else:
-        # Default to mp4 if unknown or video
-        if not ext:
-            ext = "mp4"
-        filename = f"vid-{url_hash}.{ext}"
-
-    video_path = f"{save_dir}/{filename}"
-
-    # if file already exists, return the path
-    if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
-        logger.info(f"file already exists: {video_path}")
-        return video_path
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    }
-
-    # download it
-    try:
-        response = requests.get(
-            video_url,
-            headers=headers,
-            proxies=config.proxy,
-            verify=False,
-            timeout=(60, 240),
-        )
-        response.raise_for_status()
-        with open(video_path, "wb") as f:
-            f.write(response.content)
-
-        if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
-            # If it's a video file, check validity
-            if filename.lower().endswith((".mp4", ".mov", ".avi", ".mkv")):
-                try:
-                    clip = VideoFileClip(video_path)
-                    duration = clip.duration
-                    fps = clip.fps
-                    clip.close()
-                    if duration > 0 and fps > 0:
-                        return video_path
-                except Exception as e:
-                    try:
-                        os.remove(video_path)
-                    except Exception:
-                        pass
-                    logger.warning(f"invalid video file: {video_path} => {str(e)}")
-            else:
-                # Assume image/other is valid if downloaded
-                return video_path
-        else:
-            return ""
-            
-    except Exception as e:
-        logger.error(f"save_video failed: {e}")
-        return ""
-    
-    return video_path
-
-def download_videos(
-    task_id: str,
-    search_terms: List[str],
-    source: str = "pexels",
-    video_aspect: VideoAspect = VideoAspect.portrait,
-    video_contact_mode: VideoConcatMode = VideoConcatMode.random,
-    audio_duration: float = 0.0,
-    max_clip_duration: int = 5,
-) -> List[str]:
-    valid_video_items = []
-    valid_video_urls = []
-    found_duration = 0.0
-    
-    # Check if source is one of our providers
-    provider = get_provider(source)
-    logger.info(f"using provider: {source}")
-
-    for search_term in search_terms:
-        try:
-            video_items = provider.search_videos(
-                search_term=search_term,
-                minimum_duration=max_clip_duration,
-                video_aspect=video_aspect,
-            )
-            logger.info(f"found {len(video_items)} items for '{search_term}'")
-
-            for item in video_items:
-                if item.url not in valid_video_urls:
-                    valid_video_items.append(item)
-                    valid_video_urls.append(item.url)
-                    found_duration += item.duration
-        except Exception as e:
-            logger.error(f"Search failed for term '{search_term}': {e}")
-
-    logger.info(
-        f"found total items: {len(valid_video_items)}, required duration: {audio_duration} seconds, found duration: {found_duration} seconds"
-    )
-    video_paths = []
-
-    material_directory = config.app.get("material_directory", "").strip()
-    if material_directory == "task":
-        material_directory = utils.task_dir(task_id)
-    elif material_directory and not os.path.isdir(material_directory):
-        material_directory = ""
-
-    if video_contact_mode.value == VideoConcatMode.random.value:
-        random.shuffle(valid_video_items)
-
-    total_duration = 0.0
-    for item in valid_video_items:
-        try:
-            logger.info(f"downloading material: {item.url}")
-            saved_video_path = save_video(
-                video_url=item.url, save_dir=material_directory
-            )
-            if saved_video_path:
-                logger.info(f"material saved: {saved_video_path}")
-                video_paths.append(saved_video_path)
-                
-                # Check if it is an image, if so, use the default duration from item or max_clip_duration
-                # Note: 'item.duration' for images was set to 3 or similar in providers.
-                seconds = min(max_clip_duration, item.duration)
-                
-                # If it's a video, item.duration is real duration.
-                # If it's an image, item.duration is virtual.
-                
-                total_duration += seconds
-                if total_duration > audio_duration:
-                    logger.info(
-                        f"total duration of downloaded materials: {total_duration} seconds, skip downloading more"
-                    )
-                    break
-        except Exception as e:
-            logger.error(f"failed to download material: {utils.to_json(item)} => {str(e)}")
-    logger.success(f"downloaded {len(video_paths)} materials")
-    return video_paths
-
-if __name__ == "__main__":
-    # Test
-    pass
+    return image_sources._save(video_url, save_dir)
