@@ -13,7 +13,7 @@ from __future__ import annotations
 from . import image_sources
 
 IMAGE_SOURCES = image_sources.IMAGE_SOURCES
-# 返回图片、需要 task 层用 video.preprocess_video 渲染成片段的源
+# 需要在模块内把图片渲染成 mp4 片段的源（本地素材库返回的是视频）
 PREPROCESS_SOURCES = image_sources.PREPROCESS_SOURCES
 
 __all__ = [
@@ -60,6 +60,21 @@ def download_videos(*args, **kwargs):
     from .backup import download_videos as upstream_download_videos
 
     return upstream_download_videos(*args, **kwargs)
+
+
+def is_openai_image_enabled(settings):
+    """设置页统计「已配置素材来源」时使用，优先复用上游判定逻辑。
+
+    门面只显式覆盖下载入口，其余名字走 ``__getattr__`` 透传。这里额外保留
+    一个兜底，避免上游版本未暴露该辅助函数时整个设置弹窗因 AttributeError
+    打不开；它只影响快捷入口的展示，不参与实际素材生成。
+    """
+    from . import backup
+
+    implementation = getattr(backup, "is_openai_image_enabled", None)
+    if implementation is not None:
+        return implementation(settings)
+    return bool(str(settings.get("openai_image_base_url", "") or "").strip())
 
 
 def save_video(video_url: str, save_dir: str = "") -> str:

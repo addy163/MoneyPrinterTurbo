@@ -95,6 +95,10 @@ def configured_material_providers(settings, groups, codex_connected=False):
     }
     enabled.update(
         {
+            # 本项目自定义的搜索源免密钥，始终视为可用。
+            "baidu_image": True,
+            "bing_image": True,
+            "local_search": True,
             "metaso_minimax": metaso_minimax.is_enabled(settings),
             "ofox": ofox.is_enabled(settings),
             "volcengine_seedance": volcengine_seedance.is_enabled(settings),

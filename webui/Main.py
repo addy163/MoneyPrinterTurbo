@@ -146,6 +146,8 @@ VIDEO_SOURCE_GROUPS = {
         "muapi",
     ),
     "ai_image": ("openai_image", "codex_image"),
+    # 本项目自定义：按关键词搜索公开图片或复用本地素材库，均无需 API Key。
+    "image_search": ("baidu_image", "bing_image", "local_search"),
     "local": ("local",),
 }
 # Upload-Post 的 API Key 与发布用户分别在两个页面管理，并且发布用户名称
@@ -3377,7 +3379,9 @@ def _initialize_material_navigation(target, settings):
     groups = {
         group: providers
         for group, providers in VIDEO_SOURCE_GROUPS.items()
-        if group != "local"
+        # image_search 是免密钥的自定义搜索源，没有可配置的 API Key 面板；
+        # 与 local 一样不参与设置页的 provider 导航。
+        if group not in {"local", "image_search"}
     }
     source = settings.get("video_source", "pexels")
     source_group = next(
@@ -3419,6 +3423,9 @@ def _material_provider_labels():
         "muapi": tr("MuAPI AI Video"),
         "openai_image": tr("OpenAI Compatible Text-to-Image"),
         "codex_image": tr("codex.image.label"),
+        "baidu_image": tr("Baidu Images"),
+        "bing_image": tr("Bing Images"),
+        "local_search": tr("Local Library Search"),
         "local": tr("Local file"),
     }
 
@@ -6051,6 +6058,9 @@ def _render_video_settings(panel, params):
                 "loomloom": tr("Shengsuan Cloud AI Video"),
                 "openai_image": tr("OpenAI Compatible Text-to-Image"),
                 "codex_image": tr("codex.image.label"),
+                "baidu_image": tr("Baidu Images"),
+                "bing_image": tr("Bing Images"),
+                "local_search": tr("Local Library Search"),
                 "local": tr("Local file"),
             }
             saved_video_source_name = str(
@@ -6063,6 +6073,7 @@ def _render_video_settings(panel, params):
                     (tr("Stock Video"), VIDEO_SOURCE_GROUPS["stock_video"]),
                     (tr("AI Video"), VIDEO_SOURCE_GROUPS["ai_video"]),
                     (tr("AI Image"), VIDEO_SOURCE_GROUPS["ai_image"]),
+                    (tr("Image Search"), VIDEO_SOURCE_GROUPS["image_search"]),
                     (tr("Local Material"), VIDEO_SOURCE_GROUPS["local"]),
                 ),
                 default_value=saved_video_source_name,
@@ -6072,6 +6083,8 @@ def _render_video_settings(panel, params):
                 on_settings=_open_material_settings_dialog,
             )
             _set_runtime_config("app", "video_source", params.video_source)
+            if params.video_source in VIDEO_SOURCE_GROUPS["image_search"]:
+                st.caption(tr("Image Search Source Help"))
 
             loomloom_video_capability = None
             if params.video_source == "loomloom":
@@ -6244,7 +6257,9 @@ def _render_video_settings(panel, params):
                 "ui", "video_fit_mode", params.video_fit_mode.value
             )
 
-            if params.video_source in {"local", "openai_image", "codex_image"}:
+            if params.video_source in {
+                "local", "openai_image", "codex_image", "baidu_image", "bing_image"
+            }:
                 image_motion_labels = {
                     ImageMotion.static.value: tr("Static Image"),
                     ImageMotion.zoom.value: tr("Slow Zoom"),
